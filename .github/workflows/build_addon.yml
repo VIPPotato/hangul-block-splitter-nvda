@@ -13,7 +13,6 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
@@ -37,8 +36,17 @@ jobs:
     - name: Code checks
       run: export SKIP=no-commit-to-branch; pre-commit run --all
 
-    - name: building addon
-      run: scons && scons pot
+    - name: Build addon
+      shell: bash
+      run: |
+        set -euo pipefail
+        VERSION_ARG=""
+        if [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          VERSION_ARG="version=${TAG_VERSION}"
+        fi
+        scons ${VERSION_ARG}
+        scons ${VERSION_ARG} pot
 
     - uses: actions/upload-artifact@v5
       with:
@@ -46,6 +54,7 @@ jobs:
         path: |
           ./*.nvda-addon
           ./*.pot
+        if-no-files-found: error
 
   upload_release:
     runs-on: ubuntu-latest
@@ -55,21 +64,40 @@ jobs:
       contents: write
     steps:
     - uses: actions/checkout@v5
-    - name: download releases files
+    - name: Download release files
       uses: actions/download-artifact@v6
+      with:
+        name: packaged_addon
+        path: release_assets
     - name: Display structure of downloaded files
       run: ls -R
-    - name: Calculate sha256
+    - name: Prepare release assets
+      shell: bash
       run: |
-        echo -e "\nSHA256: " >> changelog.md
-        sha256sum *.nvda-addon >> changelog.md
+        set -euo pipefail
+        mkdir -p release_files
+        find release_assets -type f \( -name "*.nvda-addon" -o -name "*.pot" \) -exec cp {} release_files/ \;
+        ls -l release_files
+        if [[ -z "$(ls -A release_files)" ]]; then
+          echo "No release files were found after artifact download."
+          exit 1
+        fi
+    - name: Calculate sha256
+      shell: bash
+      run: |
+        set -euo pipefail
+        : > changelog.md
+        echo "Automated release for ${GITHUB_REF_NAME}" >> changelog.md
+        echo >> changelog.md
+        echo "SHA256:" >> changelog.md
+        sha256sum release_files/*.nvda-addon >> changelog.md
 
     - name: Release
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          *.nvda-addon
-          *.pot
+          release_files/*.nvda-addon
+          release_files/*.pot
         body_path: changelog.md
         fail_on_unmatched_files: true
         prerelease: ${{ contains(github.ref, '-') }}

@@ -1,0 +1,72 @@
+name: weekly incremental release
+
+on:
+  schedule:
+    # Every Sunday at 04:00 UTC.
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+
+jobs:
+  tag_patch_release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: Configure git identity
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+    - name: Determine next release tag
+      id: next
+      shell: bash
+      run: |
+        set -euo pipefail
+        latest_tag="$(git tag --list | grep -E '^v?[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -n 1 || true)"
+        if [[ -z "${latest_tag}" ]]; then
+          echo "No semver release tag found yet. Skipping automatic increment."
+          echo "should_release=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        normalized="${latest_tag#v}"
+        IFS='.' read -r major minor patch <<< "${normalized}"
+        patch="${patch:-0}"
+
+        addon_commit_count="$(git rev-list --count "${latest_tag}..HEAD" -- addon/)"
+        if [[ "${addon_commit_count}" -eq 0 ]]; then
+          echo "No commits in addon/ since ${latest_tag}. Skipping."
+          echo "should_release=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        next_patch=$((patch + 1))
+        next_tag="v${major}.${minor}.${next_patch}"
+        if git rev-parse -q --verify "refs/tags/${next_tag}" >/dev/null; then
+          echo "Tag ${next_tag} already exists. Skipping."
+          echo "should_release=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "should_release=true" >> "$GITHUB_OUTPUT"
+        echo "latest_tag=${latest_tag}" >> "$GITHUB_OUTPUT"
+        echo "next_tag=${next_tag}" >> "$GITHUB_OUTPUT"
+        echo "addon_commit_count=${addon_commit_count}" >> "$GITHUB_OUTPUT"
+
+    - name: Create and push weekly tag
+      if: steps.next.outputs.should_release == 'true'
+      run: |
+        git tag -a "${{ steps.next.outputs.next_tag }}" -m "Weekly addon release ${{ steps.next.outputs.next_tag }}"
+        git push origin "${{ steps.next.outputs.next_tag }}"
+
+    - name: Summary
+      if: always()
+      run: |
+        echo "should_release=${{ steps.next.outputs.should_release }}"
+        echo "latest_tag=${{ steps.next.outputs.latest_tag }}"
+        echo "next_tag=${{ steps.next.outputs.next_tag }}"
+        echo "addon_commit_count=${{ steps.next.outputs.addon_commit_count }}"
