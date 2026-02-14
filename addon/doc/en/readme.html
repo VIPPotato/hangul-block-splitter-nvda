@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" type="text/css" href="../style.css" media="screen">
+<title>Hangul Block Splitter 1.0</title>
+</head>
+<body>
+<h1>Hangul Block Splitter</h1>
+<p>Hangul Block Splitter is an NVDA add-on that breaks Hangul syllable blocks into Jamo and lets you read, describe, or copy the split result quickly.</p>
+<h2>Features</h2>
+<ul>
+<li>Splits selected Hangul text first, then falls back to the current line, then the character under the cursor.</li>
+<li>Accepts and processes only Hangul script characters; non-Hangul input is ignored.</li>
+<li>Supports optional complex-letter splitting (<code>ㅘ -&gt; ㅗㅏ</code>, <code>ㄳ -&gt; ㄱㅅ</code>).</li>
+<li>Supports optional spacing between split letters.</li>
+<li>Includes a splitter dialog with editable input and read-only output.</li>
+<li>Lets you close the splitter dialog with <code>Escape</code>.</li>
+<li>Adds a Tools menu item so you can open the splitter without a gesture.</li>
+<li>Exposes all commands in Input Gestures so you can rebind them freely.</li>
+</ul>
+<h2>Default gestures</h2>
+<ul>
+<li><code>NVDA+alt+h</code>: Describe characters of split selected Hangul text (or current line, or Hangul under cursor). Press twice to copy the split result to clipboard.</li>
+<li><code>NVDA+shift+h</code>: Open the splitter dialog.</li>
+</ul>
+<h2>Rebinding gestures</h2>
+<p>Go to NVDA menu -&gt; Preferences -&gt; Input Gestures, then find the <code>Hangul Block Splitter</code> category.</p>
+<p>You can also bind commands that have no default gesture:</p>
+<ul>
+<li>Copy split result to clipboard</li>
+<li>Toggle complex-letter splitting</li>
+<li>Toggle insertion of spaces</li>
+<li>Toggle live update in dialog</li>
+</ul>
+<h2>Add-on settings</h2>
+<p>Go to NVDA menu -&gt; Preferences -&gt; Settings -&gt; <code>Hangul Block Splitter</code>.</p>
+<ul>
+<li>Default complex-letter splitting</li>
+<li>Default spacing between letters</li>
+<li>Default live update behavior in dialog</li>
+</ul>
+</body>
+</html>
