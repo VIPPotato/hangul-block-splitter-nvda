@@ -23,7 +23,7 @@ It keeps the core behavior of the standalone app while fitting naturally into NV
 
 - `NVDA+alt+h`: Describe characters of split selected Hangul text (or configured default scope under cursor).  
   Press twice to copy the split result to clipboard.
-- `NVDA+ctrl+h`: Copy split selected Hangul text (or configured default scope under cursor) to clipboard.
+- `NVDA+ctrl+h`: Cycle default split scope when no text is selected (single block / word / line).
 - `NVDA+shift+h`: Open splitter dialog.
 
 ### Rebinding gestures
@@ -32,10 +32,10 @@ Go to NVDA menu -> Preferences -> Input Gestures, then find category `Hangul Blo
 
 Commands without default gestures can also be bound there:
 
+- Copy split result to clipboard
 - Toggle complex-letter splitting
 - Toggle insertion of spaces
 - Toggle live update in dialog
-- Cycle default split scope (single block / word / line)
 
 ### Add-on settings
 
@@ -75,7 +75,7 @@ The build output is created in `dist\`.
 
 - `NVDA+alt+h`: 선택한 한글(선택이 없으면 설정한 기본 범위)을 분해해 문자 설명으로 읽기  
   두 번 누르면 분해 결과를 클립보드에 복사
-- `NVDA+ctrl+h`: 선택한 한글(선택이 없으면 설정한 기본 범위)을 분해해 클립보드에 복사
+- `NVDA+ctrl+h`: 텍스트 미선택 시 기본 분해 범위를 순환 전환(한 글자/단어/줄)
 - `NVDA+shift+h`: 한글 분해기 대화상자 열기
 
 ### 제스처 재할당
@@ -84,10 +84,10 @@ NVDA 메뉴 -> 환경설정 -> 입력 제스처에서 `한글 블록 분해기` 
 
 기본 제스처가 없는 명령도 여기서 직접 연결할 수 있습니다.
 
+- 분해 결과 클립보드 복사
 - 겹글자 분해 켜기/끄기
 - 글자 사이 공백 삽입 켜기/끄기
 - 대화상자 실시간 갱신 켜기/끄기
-- 기본 분해 범위 순환 전환(한 글자/단어/줄)
 
 ### 추가 기능 설정
 

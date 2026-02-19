@@ -679,7 +679,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			"Copies split selected Hangul text, or the configured default range under cursor, to the clipboard.",
 			"선택한 한글(선택이 없으면 설정한 기본 범위)을 분해해 클립보드에 복사합니다.",
 		),
-		gesture="kb:NVDA+ctrl+h",
 		speakOnDemand=True,
 	)
 	def script_copySplitHangulUnderCursor(self, gesture):
@@ -745,6 +744,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			"Cycles the default split range used when no text is selected.",
 			"텍스트를 선택하지 않았을 때 사용할 기본 분해 범위를 순환 전환합니다.",
 		),
+		gesture="kb:NVDA+ctrl+h",
 		speakOnDemand=True,
 	)
 	def script_cycleDefaultSourceScope(self, gesture):
