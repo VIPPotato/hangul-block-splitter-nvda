@@ -20,11 +20,11 @@ addon_info = AddonInfo(
 		"Splits selected Hangul text or the Hangul block under cursor into Jamo, "
 		"then reads, describes, or copies the result."
 	),
-	addon_version="1.0",
+	addon_version="1.0.1",
 	# Translators: Brief changelog entry for this add-on version.
 	addon_changelog=_(
-		"Initial NVDA add-on release with selection-aware splitting, Hangul-only "
-		"filtering, and an interactive splitter dialog."
+		"Added configurable default split scope (block/word/line) and default "
+		"NVDA+ctrl+h copy gesture."
 	),
 	addon_author="VIPPotato <vippotato1@tyflodysk.pl>",
 	addon_url="https://github.com/VIPPotato/hangul-block-splitter-nvda",

@@ -25,11 +25,20 @@ CONF_SECTION = "hangulBlockSplitter"
 KEY_SPLIT_COMPLEX = "splitComplexLetters"
 KEY_INSERT_SPACES = "insertSpacesBetweenLetters"
 KEY_LIVE_UPDATE_IN_DIALOG = "liveUpdateInDialog"
+KEY_DEFAULT_SOURCE_SCOPE = "defaultSourceScope"
+
+SCOPE_CHARACTER = "character"
+SCOPE_WORD = "word"
+SCOPE_LINE = "line"
+SCOPE_SELECTION = "selection"
+
+_DEFAULT_SCOPE_VALUES = (SCOPE_CHARACTER, SCOPE_WORD, SCOPE_LINE)
 
 CONF_SPEC = {
 	KEY_SPLIT_COMPLEX: "boolean(default=True)",
 	KEY_INSERT_SPACES: "boolean(default=False)",
 	KEY_LIVE_UPDATE_IN_DIALOG: "boolean(default=True)",
+	KEY_DEFAULT_SOURCE_SCOPE: "string(default=\"character\")",
 }
 
 
@@ -80,6 +89,36 @@ def _save_live_update_setting(enabled: bool) -> None:
 	conf[KEY_LIVE_UPDATE_IN_DIALOG] = bool(enabled)
 
 
+def _normalize_source_scope(scope: str) -> str:
+	normalized = str(scope).strip().lower()
+	if normalized in _DEFAULT_SCOPE_VALUES:
+		return normalized
+	return SCOPE_CHARACTER
+
+
+def _get_default_source_scope() -> str:
+	conf = _get_conf_section()
+	return _normalize_source_scope(conf[KEY_DEFAULT_SOURCE_SCOPE])
+
+
+def _save_default_source_scope(scope: str) -> None:
+	conf = _get_conf_section()
+	conf[KEY_DEFAULT_SOURCE_SCOPE] = _normalize_source_scope(scope)
+
+
+def _get_default_source_scope_labels() -> dict[str, str]:
+	return {
+		SCOPE_CHARACTER: _tr("Single Hangul block under cursor", "커서 아래 한글 한 글자"),
+		SCOPE_WORD: _tr("Current word under cursor", "커서가 있는 현재 단어"),
+		SCOPE_LINE: _tr("Current line", "현재 줄"),
+	}
+
+
+def _scope_name_for_message(scope: str) -> str:
+	labels = _get_default_source_scope_labels()
+	return labels.get(_normalize_source_scope(scope), labels[SCOPE_CHARACTER])
+
+
 def _get_text_container():
 	obj = api.getFocusObject()
 	tree_interceptor = getattr(obj, "treeInterceptor", None)
@@ -119,6 +158,18 @@ def _get_current_line_text() -> str:
 		return ""
 
 
+def _get_current_word_text() -> str:
+	info = _get_caret_text_info()
+	if info is None:
+		return ""
+	try:
+		word_info = info.copy()
+		word_info.expand(textInfos.UNIT_WORD)
+		return word_info.text or ""
+	except (AttributeError, RuntimeError):
+		return ""
+
+
 def _extract_character_from_info(info) -> str:
 	try:
 		char_info = info.copy()
@@ -150,17 +201,13 @@ def _get_character_under_cursor() -> str:
 		return ""
 
 
-def _get_dialog_seed_text() -> str:
-	selection_text = _sanitize_for_split(_get_selection_text())
-	if _has_hangul_content(selection_text):
-		return selection_text
-	line_text = _sanitize_for_split(_get_current_line_text())
-	if _has_hangul_content(line_text):
-		return line_text
-	char_text = _sanitize_for_split(_get_character_under_cursor())
-	if _has_hangul_content(char_text):
-		return char_text
-	return ""
+def _get_text_from_scope(scope: str) -> tuple[str, str]:
+	normalized_scope = _normalize_source_scope(scope)
+	if normalized_scope == SCOPE_LINE:
+		return _get_current_line_text(), SCOPE_LINE
+	if normalized_scope == SCOPE_WORD:
+		return _get_current_word_text(), SCOPE_WORD
+	return _get_character_under_cursor(), SCOPE_CHARACTER
 
 
 def _has_hangul_content(text: str) -> bool:
@@ -171,14 +218,19 @@ def _sanitize_for_split(text: str) -> str:
 	return keep_only_hangul(text, include_whitespace=True)
 
 
-def _get_split_source_text() -> tuple[str, str]:
+def _get_split_source_text(scope: str | None = None) -> tuple[str, str]:
 	selection_text = _get_selection_text()
 	if selection_text:
-		return selection_text, "selection"
-	line_text = _get_current_line_text()
-	if line_text:
-		return line_text, "line"
-	return _get_character_under_cursor(), "character"
+		return selection_text, SCOPE_SELECTION
+	return _get_text_from_scope(scope or _get_default_source_scope())
+
+
+def _get_dialog_seed_text() -> str:
+	source_text, _source_kind = _get_split_source_text()
+	sanitized_text = _sanitize_for_split(source_text)
+	if _has_hangul_content(sanitized_text):
+		return sanitized_text
+	return ""
 
 
 class HangulSplitterSettingsPanel(gui.settingsDialogs.SettingsPanel):
@@ -187,6 +239,8 @@ class HangulSplitterSettingsPanel(gui.settingsDialogs.SettingsPanel):
 	def makeSettings(self, settingsSizer: wx.BoxSizer) -> None:
 		helper = guiHelper.BoxSizerHelper(self, sizer=settingsSizer)
 		conf = _get_conf_section()
+		scope_labels = _get_default_source_scope_labels()
+		self._default_scope_values = list(_DEFAULT_SCOPE_VALUES)
 
 		self._split_complex_checkbox = helper.addItem(
 			wx.CheckBox(
@@ -221,11 +275,32 @@ class HangulSplitterSettingsPanel(gui.settingsDialogs.SettingsPanel):
 		)
 		self._live_update_checkbox.SetValue(bool(conf[KEY_LIVE_UPDATE_IN_DIALOG]))
 
+		self._default_scope_choice = helper.addLabeledControl(
+			_tr(
+				"When no text is selected, split this range:",
+				"텍스트를 선택하지 않았을 때 분해할 범위:",
+			),
+			wx.Choice,
+			choices=[scope_labels[scope] for scope in self._default_scope_values],
+		)
+		current_scope = _get_default_source_scope()
+		try:
+			selected_index = self._default_scope_values.index(current_scope)
+		except ValueError:
+			selected_index = 0
+		self._default_scope_choice.SetSelection(selected_index)
+
 	def onSave(self) -> None:
 		conf = _get_conf_section()
 		conf[KEY_SPLIT_COMPLEX] = self._split_complex_checkbox.GetValue()
 		conf[KEY_INSERT_SPACES] = self._insert_spaces_checkbox.GetValue()
 		conf[KEY_LIVE_UPDATE_IN_DIALOG] = self._live_update_checkbox.GetValue()
+		selected_index = self._default_scope_choice.GetSelection()
+		if selected_index < 0:
+			selected_scope = SCOPE_CHARACTER
+		else:
+			selected_scope = self._default_scope_values[selected_index]
+		_save_default_source_scope(selected_scope)
 
 
 class HangulSplitterDialog(wx.Dialog):
@@ -537,7 +612,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		return split_hangul_blocks(sanitized_text, _get_split_options()), source_kind
 
 	def _announce_no_hangul_source(self, source_kind: str) -> None:
-		if source_kind == "selection":
+		if source_kind == SCOPE_SELECTION:
 			ui.message(
 				_tr(
 					"Selected text does not contain Hangul.",
@@ -545,11 +620,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				),
 			)
 			return
-		if source_kind == "line":
+		if source_kind == SCOPE_LINE:
 			ui.message(
 				_tr(
 					"The current line does not contain Hangul.",
 					"현재 줄에 한글이 없습니다.",
+				),
+			)
+			return
+		if source_kind == SCOPE_WORD:
+			ui.message(
+				_tr(
+					"The current word does not contain Hangul.",
+					"현재 단어에 한글이 없습니다.",
 				),
 			)
 			return
@@ -562,8 +645,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	@script(
 		description=_tr(
-			"Opens the Hangul splitter dialog with selected text, current line, or character under cursor.",
-			"선택한 텍스트, 현재 줄, 또는 커서 문자를 가져와 한글 분해기 대화상자를 엽니다.",
+			"Opens the Hangul splitter dialog with selected text, or the configured default range under cursor.",
+			"선택한 텍스트 또는 설정한 기본 범위(한 글자/단어/줄)의 텍스트로 한글 분해기 대화상자를 엽니다.",
 		),
 		gesture="kb:NVDA+shift+h",
 		speakOnDemand=True,
@@ -573,8 +656,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	@script(
 		description=_tr(
-			"Describes each character of split selected Hangul text, or the current line, or the Hangul block under cursor. Press twice to copy the split result to clipboard.",
-			"선택한 한글(없으면 현재 줄, 없으면 커서 아래 한글 블록)을 분해한 뒤 각 글자를 문자 설명으로 읽어줍니다. 두 번 누르면 분해 결과를 클립보드에 복사합니다.",
+			"Describes each character of split selected Hangul text, or the configured default range under cursor. Press twice to copy the split result to clipboard.",
+			"선택한 한글(없으면 설정한 기본 범위의 텍스트)을 분해한 뒤 각 글자를 문자 설명으로 읽어줍니다. 두 번 누르면 분해 결과를 클립보드에 복사합니다.",
 		),
 		gesture="kb:NVDA+alt+h",
 		speakOnDemand=True,
@@ -593,9 +676,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	@script(
 		description=_tr(
-			"Copies split selected Hangul text or the Hangul block under the cursor to the clipboard.",
-			"선택한 한글 또는 커서 아래 한글 블록을 분해해 클립보드에 복사합니다.",
+			"Copies split selected Hangul text, or the configured default range under cursor, to the clipboard.",
+			"선택한 한글(선택이 없으면 설정한 기본 범위)을 분해해 클립보드에 복사합니다.",
 		),
+		gesture="kb:NVDA+ctrl+h",
 		speakOnDemand=True,
 	)
 	def script_copySplitHangulUnderCursor(self, gesture):
@@ -654,4 +738,26 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			_tr("Live update in dialog on.", "대화상자 실시간 갱신 켜짐.")
 			if new_value
 			else _tr("Live update in dialog off.", "대화상자 실시간 갱신 꺼짐."),
+		)
+
+	@script(
+		description=_tr(
+			"Cycles the default split range used when no text is selected.",
+			"텍스트를 선택하지 않았을 때 사용할 기본 분해 범위를 순환 전환합니다.",
+		),
+		speakOnDemand=True,
+	)
+	def script_cycleDefaultSourceScope(self, gesture):
+		current_scope = _get_default_source_scope()
+		try:
+			current_index = _DEFAULT_SCOPE_VALUES.index(current_scope)
+		except ValueError:
+			current_index = 0
+		next_scope = _DEFAULT_SCOPE_VALUES[(current_index + 1) % len(_DEFAULT_SCOPE_VALUES)]
+		_save_default_source_scope(next_scope)
+		ui.message(
+			_tr(
+				f"Default split range: {_scope_name_for_message(next_scope)}.",
+				f"기본 분해 범위: {_scope_name_for_message(next_scope)}.",
+			),
 		)
