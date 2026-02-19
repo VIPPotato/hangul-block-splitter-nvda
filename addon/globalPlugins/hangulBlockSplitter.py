@@ -755,9 +755,4 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			current_index = 0
 		next_scope = _DEFAULT_SCOPE_VALUES[(current_index + 1) % len(_DEFAULT_SCOPE_VALUES)]
 		_save_default_source_scope(next_scope)
-		ui.message(
-			_tr(
-				f"Default split range: {_scope_name_for_message(next_scope)}.",
-				f"기본 분해 범위: {_scope_name_for_message(next_scope)}.",
-			),
-		)
+		ui.message(_scope_name_for_message(next_scope))
