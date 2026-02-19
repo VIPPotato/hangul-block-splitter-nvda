@@ -744,7 +744,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			"Cycles the default split range used when no text is selected.",
 			"텍스트를 선택하지 않았을 때 사용할 기본 분해 범위를 순환 전환합니다.",
 		),
-		gesture="kb:NVDA+ctrl+h",
+		gesture="kb:NVDA+control+h",
 		speakOnDemand=True,
 	)
 	def script_cycleDefaultSourceScope(self, gesture):
