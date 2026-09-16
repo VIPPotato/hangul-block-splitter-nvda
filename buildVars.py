@@ -17,21 +17,20 @@ addon_info = AddonInfo(
 	addon_summary=_("Hangul Block Splitter"),
 	# Translators: Long description for this add-on shown in add-on information pages.
 	addon_description=_(
-		"Splits selected Hangul text or the Hangul block under cursor into Jamo, "
-		"then reads, describes, or copies the result."
+		"Splits selected Hangul text or the Hangul block under cursor into Jamo with optional phonetic spelling, "
+		"looks up Hanja meaning and strokes, and reads, describes, or copies the result."
 	),
-	addon_version="1.0.1",
+	addon_version="1.1.0",
 	# Translators: Brief changelog entry for this add-on version.
 	addon_changelog=_(
-		"Added configurable default split scope (block/word/line) and default "
-		"NVDA+ctrl+h copy gesture."
+		"Added inline review & Hanja inspection (NVDA+shift+g), phonetic spelling modes, and built-in Hanja dictionary."
 	),
-	addon_author="VIPPotato <vippotato1@tyflodysk.pl>",
+	addon_author="VIPPotato",
 	addon_url="https://github.com/VIPPotato/hangul-block-splitter-nvda",
 	addon_sourceURL="https://github.com/VIPPotato/hangul-block-splitter-nvda",
 	addon_docFileName="readme.html",
 	addon_minimumNVDAVersion="2025.3",
-	addon_lastTestedNVDAVersion="2025.3.2",
+	addon_lastTestedNVDAVersion="2026.2",
 	addon_updateChannel=None,
 	addon_license="GPL v2",
 	addon_licenseURL="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html",

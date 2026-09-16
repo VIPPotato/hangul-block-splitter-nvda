@@ -208,3 +208,4 @@ __marimo__/
 # SCons / NVDA add-on build artifacts
 .sconsign.dblite
 *.nvda-addon
+reference/

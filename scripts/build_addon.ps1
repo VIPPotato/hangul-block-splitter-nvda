@@ -27,8 +27,20 @@ try {
 		$sconsArgs += "channel=$Channel"
 	}
 
-	& py -3 -m SCons @sconsArgs
-	if ($LASTEXITCODE -ne 0) {
+	$sconsFound = $false
+	$userSite = "$env:LOCALAPPDATA\Programs\Python\Python312\Lib\site-packages"
+	if (Test-Path $userSite) {
+		$env:PYTHONPATH = if ($env:PYTHONPATH) { "$userSite;$($env:PYTHONPATH)" } else { $userSite }
+	}
+
+	if (Test-Path "C:\Python312\python.exe") {
+		& "C:\Python312\python.exe" -m SCons @sconsArgs
+		$sconsFound = $true
+	} else {
+		& py -3 -m SCons @sconsArgs
+		$sconsFound = $true
+	}
+	if (-not $sconsFound -or $LASTEXITCODE -ne 0) {
 		throw "SCons build failed with exit code $LASTEXITCODE"
 	}
 

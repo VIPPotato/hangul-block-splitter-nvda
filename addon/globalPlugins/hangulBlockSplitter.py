@@ -16,7 +16,19 @@ import treeInterceptorHandler
 import ui
 import wx
 
-from ._hangulSplitterCore import SplitOptions, keep_only_hangul, split_hangul_blocks
+from ._hangulSplitterCore import (
+	PHONETIC_FULL,
+	PHONETIC_OFF,
+	PHONETIC_SHORT,
+	SplitOptions,
+	decompose_for_review,
+	get_hanja_description,
+	is_hangul_or_hanja_char,
+	is_hanja_char,
+	keep_only_hangul_and_hanja,
+	lookup_hanja,
+	split_hangul_blocks,
+)
 
 addonHandler.initTranslation()
 
@@ -26,6 +38,7 @@ KEY_SPLIT_COMPLEX = "splitComplexLetters"
 KEY_INSERT_SPACES = "insertSpacesBetweenLetters"
 KEY_LIVE_UPDATE_IN_DIALOG = "liveUpdateInDialog"
 KEY_DEFAULT_SOURCE_SCOPE = "defaultSourceScope"
+KEY_PHONETIC_MODE = "phoneticMode"
 
 SCOPE_CHARACTER = "character"
 SCOPE_WORD = "word"
@@ -33,12 +46,14 @@ SCOPE_LINE = "line"
 SCOPE_SELECTION = "selection"
 
 _DEFAULT_SCOPE_VALUES = (SCOPE_CHARACTER, SCOPE_WORD, SCOPE_LINE)
+_PHONETIC_MODE_VALUES = (PHONETIC_OFF, PHONETIC_SHORT, PHONETIC_FULL)
 
 CONF_SPEC = {
 	KEY_SPLIT_COMPLEX: "boolean(default=True)",
 	KEY_INSERT_SPACES: "boolean(default=False)",
 	KEY_LIVE_UPDATE_IN_DIALOG: "boolean(default=True)",
 	KEY_DEFAULT_SOURCE_SCOPE: "string(default=\"character\")",
+	KEY_PHONETIC_MODE: "string(default=\"off\")",
 }
 
 
@@ -65,11 +80,42 @@ def _get_conf_section():
 	return config.conf[CONF_SECTION]
 
 
+def _normalize_phonetic_mode(mode: str) -> str:
+	normalized = str(mode).strip().lower()
+	if normalized in _PHONETIC_MODE_VALUES:
+		return normalized
+	return PHONETIC_OFF
+
+
+def _get_phonetic_mode() -> str:
+	conf = _get_conf_section()
+	return _normalize_phonetic_mode(conf.get(KEY_PHONETIC_MODE, PHONETIC_OFF))
+
+
+def _save_phonetic_mode(mode: str) -> None:
+	conf = _get_conf_section()
+	conf[KEY_PHONETIC_MODE] = _normalize_phonetic_mode(mode)
+
+
+def _get_phonetic_mode_labels() -> dict[str, str]:
+	return {
+		PHONETIC_OFF: _tr("Off (Jamo names)", "꺼짐 (자모 이름)"),
+		PHONETIC_SHORT: _tr("Short phonetic words (e.g. 가을, 아침)", "짧은 단어 설명 (예: 가을, 아침)"),
+		PHONETIC_FULL: _tr("Full phonetic descriptions (e.g. 가을 기역, 아침 아)", "상세 단어 설명 (예: 가을 기역, 아침 아)"),
+	}
+
+
+def _phonetic_mode_name_for_message(mode: str) -> str:
+	labels = _get_phonetic_mode_labels()
+	return labels.get(_normalize_phonetic_mode(mode), labels[PHONETIC_OFF])
+
+
 def _get_split_options() -> SplitOptions:
 	conf = _get_conf_section()
 	return SplitOptions(
 		splitComplexLetters=bool(conf[KEY_SPLIT_COMPLEX]),
 		insertSpacesBetweenLetters=bool(conf[KEY_INSERT_SPACES]),
+		phoneticMode=_get_phonetic_mode(),
 	)
 
 
@@ -77,6 +123,7 @@ def _save_split_options(options: SplitOptions) -> None:
 	conf = _get_conf_section()
 	conf[KEY_SPLIT_COMPLEX] = bool(options.splitComplexLetters)
 	conf[KEY_INSERT_SPACES] = bool(options.insertSpacesBetweenLetters)
+	conf[KEY_PHONETIC_MODE] = _normalize_phonetic_mode(options.phoneticMode)
 
 
 def _get_live_update_setting() -> bool:
@@ -211,11 +258,36 @@ def _get_text_from_scope(scope: str) -> tuple[str, str]:
 
 
 def _has_hangul_content(text: str) -> bool:
-	return any(not char.isspace() for char in keep_only_hangul(text, include_whitespace=False))
+	return any(not char.isspace() for char in keep_only_hangul_and_hanja(text, include_whitespace=False))
 
 
 def _sanitize_for_split(text: str) -> str:
-	return keep_only_hangul(text, include_whitespace=True)
+	return keep_only_hangul_and_hanja(text, include_whitespace=True)
+
+
+def _get_review_character() -> str:
+	try:
+		review_info = api.getReviewPosition()
+		if review_info is not None:
+			text = _extract_character_from_info(review_info)
+			if text:
+				return text
+	except (AttributeError, RuntimeError):
+		pass
+	return ""
+
+
+def _get_inline_review_source_text() -> str:
+	selection_text = _get_selection_text()
+	if selection_text and _has_hangul_content(selection_text):
+		return selection_text
+	review_char = _get_review_character()
+	if review_char and _has_hangul_content(review_char):
+		return review_char
+	caret_char = _get_character_under_cursor()
+	if caret_char and _has_hangul_content(caret_char):
+		return caret_char
+	return ""
 
 
 def _get_split_source_text(scope: str | None = None) -> tuple[str, str]:
@@ -290,6 +362,20 @@ class HangulSplitterSettingsPanel(gui.settingsDialogs.SettingsPanel):
 			selected_index = 0
 		self._default_scope_choice.SetSelection(selected_index)
 
+		phonetic_labels = _get_phonetic_mode_labels()
+		self._phonetic_mode_values = list(_PHONETIC_MODE_VALUES)
+		self._phonetic_mode_choice = helper.addLabeledControl(
+			_tr("Phonetic description mode:", "단어 설명 모드:"),
+			wx.Choice,
+			choices=[phonetic_labels[mode] for mode in self._phonetic_mode_values],
+		)
+		current_phonetic = _get_phonetic_mode()
+		try:
+			phonetic_index = self._phonetic_mode_values.index(current_phonetic)
+		except ValueError:
+			phonetic_index = 0
+		self._phonetic_mode_choice.SetSelection(phonetic_index)
+
 	def onSave(self) -> None:
 		conf = _get_conf_section()
 		conf[KEY_SPLIT_COMPLEX] = self._split_complex_checkbox.GetValue()
@@ -301,6 +387,9 @@ class HangulSplitterSettingsPanel(gui.settingsDialogs.SettingsPanel):
 		else:
 			selected_scope = self._default_scope_values[selected_index]
 		_save_default_source_scope(selected_scope)
+		phonetic_index = self._phonetic_mode_choice.GetSelection()
+		if phonetic_index >= 0:
+			_save_phonetic_mode(self._phonetic_mode_values[phonetic_index])
 
 
 class HangulSplitterDialog(wx.Dialog):
@@ -346,7 +435,25 @@ class HangulSplitterDialog(wx.Dialog):
 		self._live_update_checkbox.SetValue(bool(conf[KEY_LIVE_UPDATE_IN_DIALOG]))
 		options_sizer.Add(self._split_complex_checkbox, border=2, flag=wx.BOTTOM)
 		options_sizer.Add(self._insert_spaces_checkbox, border=2, flag=wx.BOTTOM)
-		options_sizer.Add(self._live_update_checkbox)
+		options_sizer.Add(self._live_update_checkbox, border=4, flag=wx.BOTTOM)
+
+		phonetic_row = wx.BoxSizer(wx.HORIZONTAL)
+		phonetic_label = wx.StaticText(self, label=_tr("Phonetic mode:", "단어 설명:"))
+		phonetic_labels = _get_phonetic_mode_labels()
+		self._phonetic_mode_values = list(_PHONETIC_MODE_VALUES)
+		self._phonetic_mode_choice = wx.Choice(
+			self,
+			choices=[phonetic_labels[m] for m in self._phonetic_mode_values],
+		)
+		current_phonetic = _get_phonetic_mode()
+		try:
+			phonetic_index = self._phonetic_mode_values.index(current_phonetic)
+		except ValueError:
+			phonetic_index = 0
+		self._phonetic_mode_choice.SetSelection(phonetic_index)
+		phonetic_row.Add(phonetic_label, border=5, flag=wx.ALIGN_CENTER_VERTICAL | wx.RIGHT)
+		phonetic_row.Add(self._phonetic_mode_choice, proportion=1, flag=wx.EXPAND)
+		options_sizer.Add(phonetic_row, flag=wx.EXPAND)
 
 		output_label = wx.StaticText(
 			self,
@@ -392,6 +499,7 @@ class HangulSplitterDialog(wx.Dialog):
 		self._split_complex_checkbox.Bind(wx.EVT_CHECKBOX, self._on_live_update_change)
 		self._insert_spaces_checkbox.Bind(wx.EVT_CHECKBOX, self._on_live_update_change)
 		self._live_update_checkbox.Bind(wx.EVT_CHECKBOX, self._on_live_update_toggle)
+		self._phonetic_mode_choice.Bind(wx.EVT_CHOICE, self._on_live_update_change)
 		self.SetEscapeId(wx.ID_CANCEL)
 
 		self._enforce_hangul_input()
@@ -399,14 +507,22 @@ class HangulSplitterDialog(wx.Dialog):
 		wx.CallAfter(self._input_edit.SetFocus)
 
 	def _current_options(self) -> SplitOptions:
+		phonetic_index = self._phonetic_mode_choice.GetSelection()
+		if phonetic_index >= 0:
+			mode = self._phonetic_mode_values[phonetic_index]
+		else:
+			mode = PHONETIC_OFF
 		return SplitOptions(
 			splitComplexLetters=self._split_complex_checkbox.GetValue(),
 			insertSpacesBetweenLetters=self._insert_spaces_checkbox.GetValue(),
+			phoneticMode=mode,
 		)
 
 	def _save_preferences(self) -> None:
-		_save_split_options(self._current_options())
+		options = self._current_options()
+		_save_split_options(options)
 		_save_live_update_setting(self._live_update_checkbox.GetValue())
+		_save_phonetic_mode(options.phoneticMode)
 
 	def get_input_text(self) -> str:
 		return self._input_edit.GetValue()
@@ -480,8 +596,8 @@ class HangulSplitterDialog(wx.Dialog):
 		if self._enforce_hangul_input():
 			self._set_status(
 				_tr(
-					"Only Hangul characters are accepted. Non-Hangul input was ignored.",
-					"한글만 입력할 수 있습니다. 한글이 아닌 문자는 자동으로 제외했습니다.",
+					"Only Hangul and Hanja characters are accepted. Other input was ignored.",
+					"한글과 한자만 입력할 수 있습니다. 그 외 문자는 자동으로 제외했습니다.",
 				),
 			)
 		if self._live_update_checkbox.GetValue():
@@ -615,31 +731,31 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if source_kind == SCOPE_SELECTION:
 			ui.message(
 				_tr(
-					"Selected text does not contain Hangul.",
-					"선택한 텍스트에 한글이 없습니다.",
+					"Selected text does not contain Hangul or Hanja.",
+					"선택한 텍스트에 한글이나 한자가 없습니다.",
 				),
 			)
 			return
 		if source_kind == SCOPE_LINE:
 			ui.message(
 				_tr(
-					"The current line does not contain Hangul.",
-					"현재 줄에 한글이 없습니다.",
+					"The current line does not contain Hangul or Hanja.",
+					"현재 줄에 한글이나 한자가 없습니다.",
 				),
 			)
 			return
 		if source_kind == SCOPE_WORD:
 			ui.message(
 				_tr(
-					"The current word does not contain Hangul.",
-					"현재 단어에 한글이 없습니다.",
+					"The current word does not contain Hangul or Hanja.",
+					"현재 단어에 한글이나 한자가 없습니다.",
 				),
 			)
 			return
 		ui.message(
 			_tr(
-				"No Hangul character under cursor.",
-				"커서 아래 한글 문자를 찾을 수 없습니다.",
+				"No Hangul or Hanja character under cursor.",
+				"커서 아래 한글이나 한자 문자를 찾을 수 없습니다.",
 			),
 		)
 
@@ -756,3 +872,50 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		next_scope = _DEFAULT_SCOPE_VALUES[(current_index + 1) % len(_DEFAULT_SCOPE_VALUES)]
 		_save_default_source_scope(next_scope)
 		ui.message(_scope_name_for_message(next_scope))
+
+	@script(
+		description=_tr(
+			"Inspects and spells out Hangul characters or looks up Hanja characters at cursor or review position. Press twice to copy to clipboard.",
+			"현재 위치(선택 영역, 검토 커서 또는 캐럿)의 한글을 음성 풀이로 분해하거나 한자의 훈음 및 획수를 확인합니다. 두 번 누르면 클립보드에 복사합니다.",
+		),
+		gesture="kb:NVDA+shift+g",
+		speakOnDemand=True,
+	)
+	def script_decomposeInline(self, gesture):
+		text = _get_inline_review_source_text()
+		if not text:
+			self._announce_no_hangul_source(SCOPE_CHARACTER)
+			return
+		sanitized = _sanitize_for_split(text)
+		if not _has_hangul_content(sanitized):
+			self._announce_no_hangul_source(SCOPE_CHARACTER)
+			return
+		options = _get_split_options()
+		result = decompose_for_review(sanitized, options)
+		if not result:
+			self._announce_no_hangul_source(SCOPE_CHARACTER)
+			return
+		repeat_count = getLastScriptRepeatCount()
+		if repeat_count == 0:
+			ui.message(result)
+			return
+		if not api.copyToClip(result, notify=True):
+			ui.message(_tr("Unable to copy result.", "결과를 복사하지 못했습니다."))
+
+	@script(
+		description=_tr(
+			"Cycles the phonetic spelling mode between Off, Short, and Full.",
+			"단어 설명 모드(꺼짐, 짧은 설명, 상세 설명)를 순환 전환합니다.",
+		),
+		speakOnDemand=True,
+	)
+	def script_cyclePhoneticMode(self, gesture):
+		current_mode = _get_phonetic_mode()
+		try:
+			current_index = _PHONETIC_MODE_VALUES.index(current_mode)
+		except ValueError:
+			current_index = 0
+		next_mode = _PHONETIC_MODE_VALUES[(current_index + 1) % len(_PHONETIC_MODE_VALUES)]
+		_save_phonetic_mode(next_mode)
+		ui.message(_phonetic_mode_name_for_message(next_mode))
+
